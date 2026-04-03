@@ -1,0 +1,5 @@
+{
+  "name": " Interest Calculator Pro plus",
+  "description": "A comprehensive tool for calculating simple and compound interest, managing lend/borrow records, tracking financial summaries, and backing up data to Google Drive.",
+  "requestFramePermissions": []
+}
