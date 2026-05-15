@@ -17,17 +17,23 @@
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
+    "firebase": "^12.12.1",
     "google-auth-library": "^10.6.1",
     "googleapis": "^171.4.0",
+    "lucide-react": "^1.16.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.9.6",
     "tsx": "^4.21.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@firebase/eslint-plugin-security-rules": "^0.0.2",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "eslint": "^10.3.0",
     "typescript": "~5.8.2",
+    "typescript-eslint": "^8.59.2",
     "vite": "^6.2.0"
   }
 }

@@ -25,18 +25,36 @@ app.use(session({
 
 app.use(express.json());
 
+const getRedirectUri = () => {
+  const appUrl = process.env.APP_URL || '';
+  // Remove trailing slash if present to avoid double slashes
+  const baseUrl = appUrl.endsWith('/') ? appUrl.slice(0, -1) : appUrl;
+  return `${baseUrl}/auth/google/callback`;
+};
+
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  `${process.env.APP_URL}/auth/google/callback`
+  getRedirectUri()
 );
 
 // Auth URL
 app.get('/api/auth/google/url', (req, res) => {
+  const redirectUri = getRedirectUri();
+  
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET || !process.env.APP_URL) {
+    console.error('Missing OAuth configuration:', {
+      hasClientId: !!process.env.GOOGLE_CLIENT_ID,
+      hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
+      hasAppUrl: !!process.env.APP_URL
+    });
+  }
+
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: ['https://www.googleapis.com/auth/drive.file'],
-    prompt: 'consent'
+    prompt: 'consent',
+    redirect_uri: redirectUri // Explicitly pass to ensure it's included
   });
   res.json({ url });
 });

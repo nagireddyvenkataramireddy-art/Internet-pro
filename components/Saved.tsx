@@ -18,6 +18,12 @@ const Saved: React.FC<SavedProps> = ({ onLoadRecord }) => {
   useEffect(() => {
     // Show only saved records (exclude Book records)
     setRecords(getRecords().filter(r => r.category !== 'book'));
+
+    const handleStorageUpdate = () => {
+      setRecords(getRecords().filter(r => r.category !== 'book'));
+    };
+    window.addEventListener('storage-updated', handleStorageUpdate);
+    return () => window.removeEventListener('storage-updated', handleStorageUpdate);
   }, []);
 
   const toggleSelect = (id: number) => {
@@ -39,20 +45,18 @@ const Saved: React.FC<SavedProps> = ({ onLoadRecord }) => {
   };
 
   const handleDelete = (id: number, e: React.MouseEvent) => {
+    console.log('Saved.tsx: handleDelete called for id:', id);
     e.preventDefault();
     e.stopPropagation();
-    // Use timeout to allow event propagation to complete before alert blocks the UI
-    setTimeout(() => {
-        if (window.confirm("Delete this record?")) {
-          // Delete returns all records; filter again
-          const updated = deleteRecord(id);
-          setRecords(updated.filter(r => r.category !== 'book'));
-          // Remove from selected if deleted
-          const newSelected = new Set(selectedIds);
-          newSelected.delete(id);
-          setSelectedIds(newSelected);
-        }
-    }, 50);
+    
+    if (window.confirm("Delete this record?")) {
+      console.log('Saved.tsx: user confirmed delete');
+      const updated = deleteRecord(id);
+      setRecords(updated.filter(r => r.category !== 'book'));
+      const newSelected = new Set(selectedIds);
+      newSelected.delete(id);
+      setSelectedIds(newSelected);
+    }
   };
 
   const handleToggleFav = (id: number) => {
@@ -253,6 +257,22 @@ const Saved: React.FC<SavedProps> = ({ onLoadRecord }) => {
                         <input type="checkbox" checked={selectedIds.size === sorted.length && sorted.length > 0} onChange={toggleSelectAll} />
                         Select All
                     </label>
+                    {selectedIds.size > 0 && (
+                        <button 
+                            className="btn-small btn-delete" 
+                            style={{marginLeft: 'auto', marginRight: '10px'}}
+                            onClick={() => {
+                                if (window.confirm(`Delete ${selectedIds.size} selected records?`)) {
+                                    selectedIds.forEach(id => deleteRecord(id));
+                                    const updated = getRecords().filter(r => r.category !== 'book');
+                                    setRecords(updated);
+                                    setSelectedIds(new Set());
+                                }
+                            }}
+                        >
+                            Delete Selected
+                        </button>
+                    )}
                     {selectedIds.size > 0 && (
                         <div style={{fontWeight: '700', color: '#1565c0'}}>
                             Sum: {formatMoney(selectedSum)}

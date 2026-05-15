@@ -1,5 +1,7 @@
 
 import { InterestRecord } from '../types';
+import { auth } from '../lib/firebase';
+import { saveRecordToFirestore, deleteRecordFromFirestore } from './firebaseService';
 
 const STORAGE_KEY = 'interestRecords';
 const DELETED_KEY = 'deletedRecords';
@@ -39,6 +41,8 @@ export const setLastSyncTime = (time: string) => {
 export const saveRecords = (records: InterestRecord[]) => {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    // Trigger a custom event so other components know data changed
+    window.dispatchEvent(new Event('storage-updated'));
   } catch (e) {
     console.error("Error saving records", e);
   }
@@ -49,6 +53,11 @@ export const addRecord = (record: InterestRecord) => {
   record.updatedAt = new Date().toISOString();
   records.push(record);
   saveRecords(records);
+
+  // Firestore Sync
+  if (auth.currentUser) {
+    saveRecordToFirestore(auth.currentUser.uid, record);
+  }
 };
 
 export const updateRecord = (record: InterestRecord) => {
@@ -64,10 +73,17 @@ export const updateRecord = (record: InterestRecord) => {
     records.push(record);
   }
   saveRecords(records);
+
+  // Firestore Sync
+  if (auth.currentUser) {
+    saveRecordToFirestore(auth.currentUser.uid, record);
+  }
 };
 
 export const deleteRecord = (id: number) => {
+  console.log('Attempting to delete record with ID:', id, typeof id);
   const records = getRecords();
+  console.log('Current records count:', records.length);
   
   // Track deleted ID for incremental sync
   const deletedIds = getDeletedIds();
@@ -78,8 +94,16 @@ export const deleteRecord = (id: number) => {
 
   // Use .filter() to remove ALL instances that match the ID. 
   const updatedRecords = records.filter(r => r.id != id);
+  console.log('Updated records count:', updatedRecords.length);
   
   saveRecords(updatedRecords);
+
+  // Firestore Sync
+  if (auth.currentUser) {
+    console.log('Syncing delete to Firestore for user:', auth.currentUser.uid);
+    deleteRecordFromFirestore(auth.currentUser.uid, id);
+  }
+
   return updatedRecords;
 };
 
@@ -91,6 +115,11 @@ export const toggleFavorite = (id: number) => {
     record.isFavorite = !record.isFavorite;
     record.updatedAt = new Date().toISOString();
     saveRecords(records);
+
+    // Firestore Sync
+    if (auth.currentUser) {
+      saveRecordToFirestore(auth.currentUser.uid, record);
+    }
   }
   return records;
 };

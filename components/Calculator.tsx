@@ -47,6 +47,7 @@ const Calculator: React.FC<CalculatorProps> = ({ loadData, onClearLoadData }) =>
   const [originalCreated, setOriginalCreated] = useState<string | null>(null);
   const [originalIsFavorite, setOriginalIsFavorite] = useState<boolean>(false);
   const [originalCategory, setOriginalCategory] = useState<'book'|'saved'|undefined>(undefined);
+  const [originalStatement, setOriginalStatement] = useState<StatementItem[] | undefined>(undefined);
 
   // Validation State
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -61,6 +62,7 @@ const Calculator: React.FC<CalculatorProps> = ({ loadData, onClearLoadData }) =>
       setOriginalCreated(loadData.created);
       setOriginalIsFavorite(loadData.isFavorite);
       setOriginalCategory(loadData.category);
+      setOriginalStatement(loadData.statement);
 
       setName(loadData.name);
       setPrincipal(loadData.principal.toString());
@@ -361,6 +363,16 @@ const Calculator: React.FC<CalculatorProps> = ({ loadData, onClearLoadData }) =>
         
         let int1 = Math.round(calculateInterest(P, R_input, months1, interestType === 'Simple', rateType, compoundFrequency));
         const statement: StatementItem[] = [];
+        
+        // Initial Entry
+        statement.push({
+            id: Date.now() - 100,
+            label: 'Principal (Initial)',
+            date: effectiveFrom || new Date().toISOString().split('T')[0],
+            balance: P,
+            isPayment: false
+        });
+
         let balanceAfterP1 = P;
 
         statement.push({
@@ -434,6 +446,7 @@ const Calculator: React.FC<CalculatorProps> = ({ loadData, onClearLoadData }) =>
             isFavorite: false,
             date: new Date().toISOString(),
             created: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
             partialPaymentDate: partialDate,
             partialPaymentAmount: pAmount,
             statement
@@ -443,6 +456,16 @@ const Calculator: React.FC<CalculatorProps> = ({ loadData, onClearLoadData }) =>
 
     const interest = Math.round(calculateInterest(P, R_input, fullMonths, interestType === 'Simple', rateType, compoundFrequency));
     const total = P + interest;
+
+    const initialStatement: StatementItem[] = [
+        {
+            id: Date.now(),
+            label: 'Principal (Initial)',
+            date: effectiveFrom || new Date().toISOString().split('T')[0],
+            balance: P,
+            isPayment: false
+        }
+    ];
 
     setLastCalc({
         id: Date.now(),
@@ -463,7 +486,9 @@ const Calculator: React.FC<CalculatorProps> = ({ loadData, onClearLoadData }) =>
         compoundFrequency: interestType === 'Compound' ? compoundFrequency : undefined,
         isFavorite: false,
         date: new Date().toISOString(),
-        created: new Date().toISOString()
+        created: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        statement: initialStatement
     });
   };
 
@@ -481,6 +506,7 @@ const Calculator: React.FC<CalculatorProps> = ({ loadData, onClearLoadData }) =>
               created: originalCreated || new Date().toISOString(),
               isFavorite: originalIsFavorite,
               category: originalCategory || 'saved', // Preserve original category or default to saved
+              statement: originalStatement || lastCalc.statement // Preserve original statement if editing
           };
           updateRecord(recordToUpdate);
           alert("Record updated successfully!");

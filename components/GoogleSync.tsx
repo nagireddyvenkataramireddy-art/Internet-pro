@@ -121,6 +121,44 @@ const GoogleSync: React.FC = () => {
     }
   };
 
+  const handleEmailBackup = () => {
+    const allRecords = getRecords();
+    if (allRecords.length === 0) {
+      alert("No records to backup.");
+      return;
+    }
+
+    let body = "Interest Records Backup\n";
+    body += "--------------------------\n\n";
+
+    allRecords.forEach((r, idx) => {
+      body += `${idx + 1}. ${r.name}\n`;
+      body += `Type: ${r.isLend ? "Lend" : "Borrow"}\n`;
+      body += `Principal: ${r.principal}\n`;
+      body += r.interestType === 'Compound' ? `Compound (${r.compoundFrequency || 'Yearly'})\n` : "Simple Interest\n";
+      body += `Rate: ${r.rate} ${r.rateType === 'rupees' ? 'rupees' : '%'}\n`;
+      body += `Date: ${new Date(r.date).toLocaleDateString()}\n`;
+      if (r.partialPaymentAmount) {
+        body += `Partial Pay: ${r.partialPaymentAmount} on ${r.partialPaymentDate}\n`;
+      }
+      body += `Total Amount: ${r.totalAmount}\n`;
+      body += "--------------------------\n";
+    });
+
+    const subject = encodeURIComponent("Interest Records Backup");
+    const mailBody = encodeURIComponent(body);
+    
+    if (mailBody.length > 2000) {
+      if (window.confirm("Backup data is large. Direct email might fail. Copy to clipboard instead?")) {
+        navigator.clipboard.writeText(body);
+        alert("Copied to clipboard! You can now paste into your email.");
+      }
+      return;
+    }
+
+    window.location.href = `mailto:?subject=${subject}&body=${mailBody}`;
+  };
+
   return (
     <div className="google-sync-container" style={{
       padding: '15px',
@@ -132,81 +170,116 @@ const GoogleSync: React.FC = () => {
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <i className="bi bi-google" style={{ color: '#4285F4', fontSize: '20px' }}></i>
-          <span style={{ fontWeight: '700', color: '#333' }}>Google Drive Backup</span>
+          <i className="bi bi-shield-check" style={{ color: '#2e7d32', fontSize: '20px' }}></i>
+          <span style={{ fontWeight: '700', color: '#333' }}>Backup & Sync</span>
         </div>
-        {isAuthenticated ? (
-          <button 
-            onClick={handleLogout}
-            style={{ 
-              fontSize: '11px', 
-              background: 'none', 
-              border: 'none', 
-              color: '#d32f2f', 
-              cursor: 'pointer',
-              textDecoration: 'underline'
-            }}
-          >
-            Logout
-          </button>
-        ) : null}
       </div>
 
-      {!isAuthenticated ? (
-        <div style={{ textAlign: 'center', padding: '10px' }}>
-          <p style={{ fontSize: '13px', color: '#666', marginBottom: '12px' }}>
-            Connect your Google account to backup and sync your records across devices.
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+        {/* Email Backup Section */}
+        <div style={{ borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
+           <div style={{display:'flex', alignItems:'center', gap:'8px', marginBottom:'4px'}}>
+             <i className="bi bi-envelope-at" style={{color:'#1565c0'}}></i>
+             <span style={{fontWeight:'600', fontSize:'14px'}}>Email Backup</span>
+           </div>
+          <p style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>
+            Send a formatted text summary of all your records to your email for safekeeping.
           </p>
           <button 
-            onClick={handleConnect}
+            onClick={handleEmailBackup}
             className="btn"
             style={{ 
-              background: '#4285F4', 
-              color: 'white', 
+              background: '#f8fafc', 
+              color: '#334155', 
+              border: '1px solid #e2e8f0',
               display: 'flex', 
               alignItems: 'center', 
               justifyContent: 'center',
-              gap: '10px',
-              margin: '0 auto'
+              gap: '8px',
+              fontSize: '14px',
+              width: '100%',
+              padding: '10px'
             }}
           >
-            <i className="bi bi-google"></i> Connect Google Drive
+            <i className="bi bi-send"></i> Email Records Summary
           </button>
         </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            <button 
-              onClick={handleBackup}
-              disabled={isSyncing}
-              className="btn"
-              style={{ 
-                background: '#2e7d32', 
-                color: 'white', 
-                fontSize: '14px',
-                padding: '10px',
-                opacity: isSyncing ? 0.7 : 1
-              }}
-            >
-              <i className="bi bi-cloud-upload"></i> Backup Now
-            </button>
-            <button 
-              onClick={handleRestore}
-              disabled={isSyncing}
-              className="btn"
-              style={{ 
-                background: '#1565c0', 
-                color: 'white', 
-                fontSize: '14px',
-                padding: '10px',
-                opacity: isSyncing ? 0.7 : 1
-              }}
-            >
-              <i className="bi bi-cloud-download"></i> Restore
-            </button>
+
+        {/* Google Sync Section */}
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <i className="bi bi-google" style={{ color: '#4285F4', fontSize: '16px' }}></i>
+              <span style={{ fontWeight: '600', fontSize: '14px', color: '#333' }}>Google Drive Sync</span>
+            </div>
+            {isAuthenticated ? (
+              <button 
+                onClick={handleLogout}
+                style={{ 
+                  fontSize: '11px', 
+                  background: 'none', 
+                  border: 'none', 
+                  color: '#d32f2f', 
+                  cursor: 'pointer',
+                  textDecoration: 'underline'
+                }}
+              >
+                Logout
+              </button>
+            ) : null}
           </div>
+
+          {!isAuthenticated ? (
+            <button 
+              onClick={handleConnect}
+              className="btn"
+              style={{ 
+                background: '#4285F4', 
+                color: 'white', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                gap: '10px',
+                width: '100%',
+                fontSize: '14px'
+              }}
+            >
+              <i className="bi bi-google"></i> Connect Google Drive
+            </button>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <button 
+                onClick={handleBackup}
+                disabled={isSyncing}
+                className="btn"
+                style={{ 
+                  background: '#2e7d32', 
+                  color: 'white', 
+                  fontSize: '13px',
+                  padding: '8px',
+                  opacity: isSyncing ? 0.7 : 1
+                }}
+              >
+                <i className="bi bi-cloud-upload"></i> Backup
+              </button>
+              <button 
+                onClick={handleRestore}
+                disabled={isSyncing}
+                className="btn"
+                style={{ 
+                  background: '#1565c0', 
+                  color: 'white', 
+                  fontSize: '13px',
+                  padding: '8px',
+                  opacity: isSyncing ? 0.7 : 1
+                }}
+              >
+                <i className="bi bi-cloud-download"></i> Restore
+              </button>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {message && (
         <div style={{ 

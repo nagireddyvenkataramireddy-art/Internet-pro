@@ -15,8 +15,20 @@ const Stats: React.FC = () => {
   const monthlyChartInstance = useRef<any>(null);
   const pieChartInstance = useRef<any>(null);
 
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const handleStorageUpdate = () => {
+      setRefreshKey(prev => prev + 1);
+    };
+    window.addEventListener('storage-updated', handleStorageUpdate);
+    return () => window.removeEventListener('storage-updated', handleStorageUpdate);
+  }, []);
+
   // Exclude Book records from Stats
-  const records = getRecords().filter(r => r.category !== 'book');
+  const records = useMemo(() => {
+    return getRecords().filter(r => r.category !== 'book');
+  }, [refreshKey]);
 
   const filteredRecords = useMemo(() => {
     return records

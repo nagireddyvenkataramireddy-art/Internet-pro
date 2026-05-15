@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getRecords, updateRecord, deleteRecord } from '../services/storage';
 import { formatMoney, formatDate, dayToDuration, formatNumber, diffDays, getExactDateDiff } from '../constants';
@@ -20,7 +20,15 @@ interface ActiveInterestRecord extends InterestRecord {
 const Book: React.FC<BookProps> = ({ onLoadRecord }) => {
   const navigate = useNavigate();
   const [searchName, setSearchName] = useState('');
-  const [refreshKey, setRefreshKey] = useState(0); // Used to force re-render after delete/update
+  const [refreshKey, setRefreshKey] = useState(0); 
+
+  useEffect(() => {
+    const handleStorageUpdate = () => {
+      setRefreshKey(prev => prev + 1);
+    };
+    window.addEventListener('storage-updated', handleStorageUpdate);
+    return () => window.removeEventListener('storage-updated', handleStorageUpdate);
+  }, []);
   
   // UI States
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
@@ -165,18 +173,16 @@ const Book: React.FC<BookProps> = ({ onLoadRecord }) => {
   };
 
   const handleDelete = (id: number, e: React.MouseEvent) => {
+      console.log('Book.tsx: handleDelete called for id:', id);
       e.preventDefault();
       e.stopPropagation();
-      setOpenMenuId(null); // Close menu immediately to avoid visual lag
+      setOpenMenuId(null); 
 
-      // Use setTimeout to allow the UI to update (menu close) before blocking with alert
-      setTimeout(() => {
-          if(window.confirm("Delete this record permanently?")) {
-              deleteRecord(id);
-              // Trigger re-render of list
-              setRefreshKey(prev => prev + 1);
-          }
-      }, 50);
+      if(window.confirm("Delete this record permanently?")) {
+          console.log('Book.tsx: user confirmed delete');
+          deleteRecord(id);
+          setRefreshKey(prev => prev + 1);
+      }
   };
 
   const handleShare = (r: ActiveInterestRecord) => {
@@ -230,16 +236,61 @@ Duration: ${r.durationText}`;
           return;
       }
 
+      // 1. Preserve and update history
+      const currentStatement = modalRecord.statement ? [...modalRecord.statement] : [];
+      
+      const pAmountNum = parseFloat(payAmount) || 0;
+      const discountNum = parseFloat(discountAmount) || 0;
+      
+      // Add interest entry if there was interest accrued since fromDate
+      if (stats.interest > 0) {
+          currentStatement.push({
+              id: Date.now(),
+              label: `Interest accrued (${stats.duration})`,
+              date: payDate,
+              interest: stats.interest,
+              balance: stats.total,
+              isPayment: false
+          });
+      }
+
+      // Add payment entry
+      if (pAmountNum > 0) {
+          currentStatement.push({
+              id: Date.now() + 1,
+              label: 'Partial Payment',
+              date: payDate,
+              payment: pAmountNum,
+              balance: stats.total - pAmountNum,
+              isPayment: true
+          });
+      }
+
+      // Add discount if any
+      if (discountNum > 0) {
+          const balAfterPay = stats.total - pAmountNum;
+          currentStatement.push({
+            id: Date.now() + 2,
+            label: 'Discount Given',
+            date: payDate,
+            payment: discountNum,
+            balance: balAfterPay - discountNum,
+            isPayment: true
+        });
+      }
+
       // Update Logic:
       // 1. New Principal = Remaining Amount
       // 2. New From Date = Payment Date
-      // 3. Keep original create date, but effectively 'restructuring' the active loan
+      // 3. Keep history in statement
       
       const updatedRecord: InterestRecord = {
           ...modalRecord,
           principal: remainingAmount,
           fromDate: payDate, // Shift start date
-          date: payDate,     // Update reference date for sorting logic if desired, or keep original.
+          date: payDate,     // Update reference date
+          statement: currentStatement,
+          updatedAt: new Date().toISOString()
       };
       
       updateRecord(updatedRecord);
@@ -391,16 +442,35 @@ Duration: ${r.durationText}`;
             <div onClick={() => setOpenMenuId(null)}> {/* Close menu on bg click */}
                 {activeRecords.map(r => (
                     <div key={r.id} className="book-record-card" onClick={() => setExpandedRecordId(expandedRecordId === r.id ? null : r.id)}>
-                        <div className="book-record-header">
-                            <div className="book-record-name">{r.name}</div>
-                            <div className="book-record-actions" onClick={(e) => e.stopPropagation()}>
-                                <div style={{display:'flex', alignItems:'center', gap:'4px', fontWeight:'700', color: r.isLend ? '#2e7d32' : '#c62828'}}>
-                                    {r.isLend ? 'Lend' : 'Borrow'} 
-                                    <i className={`bi ${r.isLend ? 'bi-arrow-up' : 'bi-arrow-down'}`} style={{fontSize:'18px', strokeWidth:'2px'}}></i>
-                                </div>
+                        <div className="book-record-header" style={{ borderBottom: expandedRecordId === r.id ? '1px solid #eee' : 'none', position: 'relative' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <div className="book-record-name">{r.name}</div>
+                                {expandedRecordId !== r.id && (
+                                    <div style={{ fontSize: '11px', color: r.isLend ? '#2e7d32' : '#c62828', fontWeight: '600' }}>
+                                        {r.isLend ? 'Lend' : 'Borrow'} <i className={`bi ${r.isLend ? 'bi-arrow-up' : 'bi-arrow-down'}`}></i>
+                                    </div>
+                                )}
+                            </div>
+                            
+                            <div className="book-record-actions" onClick={(e) => e.stopPropagation()} style={{ flex: 1, justifyContent: 'flex-end', gap: '15px' }}>
+                                {expandedRecordId !== r.id && (
+                                    <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: '15px', fontWeight: '800', color: '#1a4314' }}>
+                                            {formatNumber(r.currentTotal)}
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                {expandedRecordId === r.id && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '700', color: r.isLend ? '#2e7d32' : '#c62828' }}>
+                                        {r.isLend ? 'Lend' : 'Borrow'} 
+                                        <i className={`bi ${r.isLend ? 'bi-arrow-up' : 'bi-arrow-down'}`} style={{ fontSize: '18px', strokeWidth: '2px' }}></i>
+                                    </div>
+                                )}
+                                
                                 <i 
                                     className="bi bi-list" 
-                                    style={{fontSize:'24px', color:'#1565c0', cursor:'pointer', padding:'4px'}}
+                                    style={{ fontSize: '24px', color: '#1565c0', cursor: 'pointer', padding: '4px' }}
                                     onClick={(e) => handleMenuClick(r.id, e)}
                                 ></i>
 
@@ -410,60 +480,73 @@ Duration: ${r.durationText}`;
                                         <div className="menu-item" onClick={(e) => { e.stopPropagation(); handleShare(r); }}><i className="bi bi-share"></i> Share</div>
                                         <div className="menu-item" onClick={(e) => { e.stopPropagation(); handleEdit(r); }}><i className="bi bi-pencil-square"></i> Edit</div>
                                         <div className="menu-item" onClick={(e) => { e.stopPropagation(); openPaymentModal(r); }}><i className="bi bi-cash-coin"></i> Partial Payment</div>
-                                        <div className="menu-item" style={{color:'#d32f2f'}} onClick={(e) => handleDelete(r.id, e)}><i className="bi bi-trash"></i> Delete</div>
+                                        <div className="menu-item" style={{ color: '#d32f2f' }} onClick={(e) => handleDelete(r.id, e)}><i className="bi bi-trash"></i> Delete</div>
                                     </div>
                                 )}
                             </div>
                         </div>
 
-                        <div className="book-record-body">
-                            {/* Row 1 */}
-                            <div>
-                                <span className="book-label">Amount: </span>
-                                <span className="book-val">{formatNumber(r.principal)}</span>
-                            </div>
-                            <div>
-                                <span className="book-label">Interest Rate: </span>
-                                <span className="book-val">{r.rate} {r.rateType === 'rupees' ? 'rupees' : '%'}</span>
-                            </div>
+                        {expandedRecordId === r.id && (
+                            <>
+                                <div className="book-record-body">
+                                    {/* Row 1 */}
+                                    <div>
+                                        <span className="book-label">Amount: </span>
+                                        <span className="book-val">{formatNumber(r.principal)}</span>
+                                    </div>
+                                    <div>
+                                        <span className="book-label">Interest Rate: </span>
+                                        <span className="book-val">{r.rate} {r.rateType === 'rupees' ? 'rupees' : '%'}</span>
+                                    </div>
 
-                            {/* Row 2 */}
-                            <div>
-                                <span className="book-label">Given Date: </span>
-                                <span className="book-val">{r.givenDateDisplay}</span>
-                            </div>
-                            <div>
-                                <span className="book-label">Interest Amount: </span>
-                                <span className="book-val">{formatNumber(r.currentInterest)}</span>
-                            </div>
-                        </div>
+                                    {/* Row 2 */}
+                                    <div>
+                                        <span className="book-label">Given Date: </span>
+                                        <span className="book-val">{r.givenDateDisplay}</span>
+                                    </div>
+                                    <div>
+                                        <span className="book-label">Interest Amount: </span>
+                                        <span className="book-val">{formatNumber(r.currentInterest)}</span>
+                                    </div>
+                                </div>
 
-                        <div style={{padding:'0 14px 10px 14px', fontSize:'13px'}}>
-                            <span className="book-label">Total Time </span>
-                            <span className="book-val">{r.durationText}</span>
-                        </div>
-                        
-                        <div className="book-record-footer">
-                            Total Amount: {formatNumber(r.currentTotal)}
-                        </div>
+                                <div style={{ padding: '0 14px 10px 14px', fontSize: '13px' }}>
+                                    <span className="book-label">Total Time </span>
+                                    <span className="book-val">{r.durationText}</span>
+                                </div>
+                                
+                                <div className="book-record-footer">
+                                    Total Amount: {formatNumber(r.currentTotal)}
+                                </div>
+                            </>
+                        )}
 
                         {/* Collapsible History */}
                         {expandedRecordId === r.id && (
                             <div style={{padding: '10px', background: '#f9f9f9', borderTop: '1px solid #eee', marginTop: '5px'}}>
-                                <div style={{fontWeight: '600', marginBottom: '8px'}}>Transaction History</div>
+                                <div style={{fontWeight: '700', marginBottom: '10px', fontSize:'14px', color:'#444'}}>Transaction History</div>
                                 {r.statement && r.statement.length > 0 ? (
-                                    <div style={{display: 'flex', flexDirection: 'column', gap: '5px'}}>
-                                        {r.statement.map((item, idx) => (
-                                            <div key={idx} style={{display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '4px 0', borderBottom: '1px dashed #ddd'}}>
-                                                <span>{item.date} - {item.label}</span>
-                                                <span style={{fontWeight: '600', color: item.isPayment ? '#d32f2f' : '#2e7d32'}}>
-                                                    {item.isPayment ? `-${formatMoney(item.payment || 0)}` : `+${formatMoney(item.interest || 0)}`}
-                                                </span>
-                                            </div>
-                                        ))}
+                                    <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                                        {[...r.statement].reverse().map((item, idx) => {
+                                            const isInitial = item.label === 'Principal (Initial)';
+                                            return (
+                                                <div key={idx} style={{display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '8px', background: isInitial ? '#fffde7' : '#fff', borderRadius:'6px', border: isInitial ? '1px solid #fbc02d' : '1px solid #eee'}}>
+                                                    <div style={{display:'flex', flexDirection:'column'}}>
+                                                        <span style={{fontWeight:'700', color: isInitial ? '#f57f17' : (item.isPayment ? '#d32f2f' : '#2e7d32')}}>{item.label}</span>
+                                                        <span style={{color:'#888', fontSize:'11px'}}>{formatDate(item.date)}</span>
+                                                    </div>
+                                                    <div style={{textAlign:'right'}}>
+                                                        <div style={{fontWeight: '700', color: isInitial ? '#f57f17' : (item.isPayment ? '#d32f2f' : '#2e7d32')}}>
+                                                            {isInitial ? formatNumber(item.balance) : (item.isPayment ? `-${formatNumber(item.payment || 0)}` : `+${formatNumber(item.interest || 0)}`)}
+                                                        </div>
+                                                        {!isInitial && <div style={{fontSize:'10px', color:'#999'}}>Bal: {formatNumber(item.balance)}</div>}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 ) : (
-                                    <div style={{fontSize: '12px', color: '#888'}}>No transaction history.</div>
+                                    <div style={{fontSize: '12px', color: '#888', textAlign:'center', padding:'10px'}}>No transaction history available.</div>
                                 )}
                             </div>
                         )}
@@ -502,105 +585,113 @@ Duration: ${r.durationText}`;
 
                     <div className="popup-body">
                         {modalTab === 'transactions' ? (
-                            <div style={{textAlign:'center', padding:'20px', color:'#666'}}>
-                                No past transactions found.
+                            <div style={{padding:'10px'}}>
+                                <div style={{fontWeight:'700', marginBottom:'10px', fontSize:'15px'}}>Transaction History</div>
+                                {modalRecord.statement && modalRecord.statement.length > 0 ? (
+                                    <div style={{display:'flex', flexDirection:'column', gap:'8px'}}>
+                                        {[...modalRecord.statement].reverse().map((item, idx) => {
+                                            const isInitial = item.label === 'Principal (Initial)';
+                                            return (
+                                                <div key={idx} style={{background: isInitial ? '#fffde7' : '#f8f9fa', padding:'10px', borderRadius:'8px', border: isInitial ? '1px solid #fbc02d' : '1px solid #eee'}}>
+                                                    <div style={{display:'flex', justifyContent:'space-between', marginBottom:'4px'}}>
+                                                        <span style={{fontSize:'12px', color:'#666'}}>{formatDate(item.date)}</span>
+                                                        <span style={{fontSize:'12px', fontWeight:'700', color: isInitial ? '#f57f17' : (item.isPayment ? '#d32f2f' : '#2e7d32')}}>
+                                                            {item.label}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                                                        <span style={{fontSize:'14px', fontWeight:'600'}}>
+                                                            {isInitial ? `Original Principal: ${formatNumber(item.balance)}` : (item.isPayment ? `Paid: ${formatNumber(item.payment || 0)}` : `Interest: ${formatNumber(item.interest || 0)}`)}
+                                                        </span>
+                                                        {!isInitial && <span style={{fontSize:'12px', color:'#444'}}>Balance: <b>{formatNumber(item.balance)}</b></span>}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div style={{textAlign:'center', padding:'40px 10px', color:'#888'}}>
+                                        <i className="bi bi-journal-text" style={{fontSize:'32px', display:'block', marginBottom:'8px'}}></i>
+                                        No past transactions found for this record.
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <div style={{display:'flex', flexDirection:'column', gap:'12px'}}>
-                                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                                    <span style={{fontSize:'18px', fontWeight:'bold', color: modalRecord.isLend ? '#2e7d32' : '#c62828'}}>
-                                        {modalRecord.name}
-                                    </span>
-                                    <span style={{fontSize:'12px', color:'#666'}}>
-                                        From: {formatDate(modalRecord.fromDate || modalRecord.date)}
-                                    </span>
+                                {/* Heading Card like the image */}
+                                <div style={{background:'#d4e157', padding:'10px 15px', borderRadius:'8px', display:'flex', justifyContent:'space-between', alignItems:'center', color:'#1b5e20', boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
+                                    <div style={{fontSize:'18px', fontWeight:'700'}}>Principal Amount <span style={{fontSize:'20px', marginLeft:'5px'}}>{formatNumber(modalRecord.statement?.[0]?.balance || modalRecord.principal)}</span></div>
+                                    <i className="bi bi-info-circle-fill"></i>
                                 </div>
-                                
-                                <div style={{fontSize:'13px', color:'#555', background:'#f5f5f5', padding:'10px', borderRadius:'8px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px'}}>
-                                    <div>Principal: <b>{formatNumber(modalRecord.principal)}</b></div>
-                                    <div>Rate: <b>{modalRecord.rate} {modalRecord.rateType === 'rupees' ? 'rupees' : '%'}</b></div>
-                                    <div>Type: <b>{modalRecord.interestType}</b></div>
+
+                                <div style={{padding:'10px', display:'flex', flexDirection:'column', gap:'12px'}}>
+                                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                                        <span style={{fontSize:'14px', color:'#333'}}>Total Amount</span>
+                                        <span style={{fontSize:'16px', fontWeight:'700', color:'#1565c0'}}>₹ {formatNumber(modalStats?.total || 0)}</span>
+                                    </div>
+
+                                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                                        <span style={{fontSize:'14px', color:'#333'}}>Interim Payments <i className="bi bi-minus-square-fill" style={{color:'#f9a825', fontSize:'16px', marginLeft:'4px'}}></i></span>
+                                        <div style={{borderBottom:'1px solid #333', width:'120px', textAlign:'right'}}>
+                                            <input 
+                                                type="number" 
+                                                value={payAmount} 
+                                                onChange={(e) => setPayAmount(e.target.value)}
+                                                placeholder="0.00"
+                                                style={{border:'none', background:'transparent', textAlign:'right', fontWeight:'700', width:'100%', outline:'none', fontSize:'16px'}}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                                        <span style={{fontSize:'14px', color:'#333'}}>Remaining Amount</span>
+                                        <span style={{fontSize:'16px', fontWeight:'700', color:'#1565c0'}}>{formatNumber(modalRemaining)}</span>
+                                    </div>
+
+                                    <div style={{display:'flex', gap:'15px', marginTop:'10px'}}>
+                                        <div style={{flex:1}}>
+                                            <div style={{fontSize:'12px', color:'#666', display:'flex', alignItems:'center', gap:'4px'}}>
+                                                <i className="bi bi-calendar-event"></i> Interim Pay Date
+                                            </div>
+                                            <input 
+                                                type="date" 
+                                                value={payDate} 
+                                                onChange={(e) => setPayDate(e.target.value)} 
+                                                style={{width:'100%', border:'none', borderBottom:'1px solid #ddd', padding:'5px 0', fontSize:'13px', color:'#1565c0', fontWeight:'600'}}
+                                            />
+                                        </div>
+                                        <div style={{flex:1}}>
+                                            <div style={{fontSize:'12px', color:'#666', display:'flex', alignItems:'center', gap:'4px'}}>
+                                                <i className="bi bi-clock"></i> Duration
+                                            </div>
+                                            <div style={{fontSize:'13px', color:'#1565c0', fontWeight:'600', marginTop:'5px'}}>
+                                                {modalStats?.duration}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <div className="input-group" style={{marginTop:'10px'}}>
-                                    <label>Partial Payment Date</label>
-                                    <input 
-                                        type="date" 
-                                        value={payDate} 
-                                        onChange={(e) => setPayDate(e.target.value)} 
-                                        style={{fontWeight:'bold'}}
-                                    />
-                                </div>
-
-                                {/* Calculated Info Block */}
-                                {modalStats && (
-                                    <div style={{background:'#e3f2fd', padding:'12px', borderRadius:'8px', fontSize:'14px'}}>
-                                        <div style={{display:'flex', justifyContent:'space-between', marginBottom:'4px'}}>
-                                            <span style={{color:'#1565c0'}}>Duration:</span>
-                                            <span style={{fontWeight:'bold'}}>{modalStats.duration}</span>
-                                        </div>
-                                        <div style={{display:'flex', justifyContent:'space-between', marginBottom:'4px'}}>
-                                            <span style={{color:'#1565c0'}}>Interest Amount:</span>
-                                            <span style={{fontWeight:'bold'}}>{formatNumber(modalStats.interest)}</span>
-                                        </div>
-                                        <div style={{display:'flex', justifyContent:'space-between', borderTop:'1px solid #bbdefb', paddingTop:'4px', marginTop:'4px'}}>
-                                            <span style={{color:'#0d47a1', fontWeight:'600'}}>Total Amount:</span>
-                                            <span style={{fontWeight:'800', color:'#0d47a1', fontSize:'16px'}}>{formatNumber(modalStats.total)}</span>
-                                        </div>
-                                    </div>
-                                )}
-
-                                <div className="input-group">
-                                    <label>Partial Payment Amount</label>
-                                    <input 
-                                        type="number" 
-                                        placeholder="Enter amount"
-                                        value={payAmount}
-                                        onChange={(e) => setPayAmount(e.target.value)}
-                                        style={{borderColor:'#2e7d32'}}
-                                    />
-                                    {payAmount && (
-                                        <div style={{fontSize:'12px', color:'#2e7d32', marginTop:'4px', fontWeight:'600'}}>
-                                            {formatNumber(parseFloat(payAmount))}
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="input-group">
-                                    <label>Discount Amount</label>
+                                    <label>Discount Amount (Optional)</label>
                                     <input 
                                         type="number" 
                                         placeholder="Enter discount"
                                         value={discountAmount}
                                         onChange={(e) => setDiscountAmount(e.target.value)}
+                                        style={{borderRadius:'10px'}}
                                     />
                                 </div>
 
                                 <div className="input-group">
-                                    <label>Remaining Amount</label>
-                                    <div style={{
-                                        background: '#f1f8e9', 
-                                        padding: '12px', 
-                                        borderRadius: '20px', 
-                                        border: '1px solid #c5e1a5', 
-                                        fontSize: '16px', 
-                                        fontWeight: '700',
-                                        color: '#33691e'
-                                    }}>
-                                        {formatNumber(modalRemaining)}
-                                    </div>
-                                </div>
-                                
-                                <div className="input-group">
-                                    <label>Notes(Optional)</label>
+                                    <label>Notes (Optional)</label>
                                     <textarea 
-                                        placeholder="" 
-                                        rows={3}
+                                        placeholder="Add any notes here..." 
+                                        rows={2}
                                         style={{width:'100%', padding:'10px', borderRadius:'12px', border:'1px solid #ddd'}}
                                     ></textarea>
                                 </div>
 
-                                <button className="btn" style={{background:'#1565c0', marginTop:'10px'}} onClick={handleUpdatePayment}>
+                                <button className="btn" style={{background:'#1565c0', marginTop:'10px', borderRadius:'12px', height:'50px', fontSize:'16px', fontWeight:'700'}} onClick={handleUpdatePayment}>
                                     Update Payment
                                 </button>
                             </div>

@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastLogin": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "InterestRecord": {
+      "title": "Interest Record",
+      "description": "A lending or borrowing transaction record",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "principal": { "type": "number" },
+        "rate": { "type": "number" },
+        "rateType": { "type": "string", "enum": ["percent", "rupees"] },
+        "interest": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "days": { "type": "number" },
+        "monthsUsed": { "type": "number" },
+        "durationText": { "type": "string" },
+        "mode": { "type": "string", "enum": ["Dates", "Duration"] },
+        "fromDate": { "type": "string" },
+        "toDate": { "type": "string" },
+        "isLend": { "type": "boolean" },
+        "interestType": { "type": "string", "enum": ["Simple", "Compound"] },
+        "compoundFrequency": { "type": "string", "enum": ["Yearly", "Half-Yearly", "Quarterly", "Monthly"] },
+        "isFavorite": { "type": "boolean" },
+        "date": { "type": "string", "format": "date-time" },
+        "created": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "partialPaymentDate": { "type": "string" },
+        "partialPaymentAmount": { "type": "number" },
+        "category": { "type": "string", "enum": ["book", "saved"] },
+        "statement": {
+          "type": "array",
+          "items": { "type": "object" }
+        }
+      },
+      "required": ["userId", "name", "principal", "rate", "isLend", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile"
+    },
+    "/users/{userId}/records/{recordId}": {
+      "schema": "InterestRecord",
+      "description": "Financial records for the user"
+    }
+  }
+}
